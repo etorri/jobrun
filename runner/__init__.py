@@ -1,7 +1,5 @@
-#! /usr/bin/python
 
 import sys, datetime, uuid, os, json, ConfigParser
-import reporter
 from socket import gethostname
 from subprocess import Popen, CalledProcessError
 
@@ -16,7 +14,6 @@ def getcfg():
     files=["/etc/runner.cfg", os.path.expanduser("~/.runner.cfg") ]
     parser=ConfigParser.ConfigParser()
     parser.read(files)
-    print parser
     return parser
 
 
@@ -44,7 +41,7 @@ def doit():
     name= os.path.basename(sys.argv[0])
     cmdargs= sys.argv[1:]
     conf=getcfg()
-    rep=reporter.get_reporter(conf,name)
+    rep=get_reporter(conf,name)
     # Build the initial report
     doc_id= uuid.uuid4().hex
     m= { '_id':      doc_id,
@@ -96,8 +93,42 @@ def doit():
     # Remove temporary stdout,stderr files
     os.unlink(stdoutf)
     os.unlink(stderrf)
+
+
+reporter_registry=dict()
+rer=dict()
+
+try:
+    from .defaultreporter import defaultreporter
+    reporter_registry['default']= defaultreporter
+except Exception as e:
+    print "Cannot import the default module reporter/defaultreporter.py"
+    print "This is serious. Bailing out"
     
 
-if __name__ == '__main__':
-    doit()
+try:
+    from .couchreporter import couchreporter
+    reporter_registry['couchrun']= couchreporter
+except Exception as e:
+    rer['couchrun']=e
+
+try:
+    from .nsqreporter import nsqreporter
+    reporter_registry['nsqrun']=nsqreporter
+except Exception as e:
+    rer['nsqrun']=e
+
+try:
+    from .amqpreporter import amqpreporter
+    reporter_registry['amqprun']=amqpreporter
+except Exception as e:
+    rer['amqprun']=e
+
+def get_reporter(conf,name):
+    if name in reporter_registry:
+        return reporter_registry[name](conf,name)
+    else:
+        print "Error with reporter",name
+        raise rer[name]
+        
 

@@ -1,0 +1,16 @@
+#!/usr/bin/env python
+
+""" 
+defaultrun: runs a command and prints a report of the run to stdout which is the default reporter.
+
+example:
+
+defaultrun ls -l
+"""
+
+import runner
+    
+
+if __name__ == '__main__':
+    runner.doit()
+

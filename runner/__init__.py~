@@ -1,0 +1,135 @@
+
+import sys, datetime, uuid, os, json, ConfigParser
+from socket import gethostname
+from subprocess import Popen, CalledProcessError
+
+
+CONF=".runner"
+
+def tstamp():
+    return datetime.datetime.utcnow().isoformat()
+
+
+def getcfg():
+    files=["/etc/runner.cfg", os.path.expanduser("~/.runner.cfg") ]
+    parser=ConfigParser.ConfigParser()
+    parser.read(files)
+    print parser
+    return parser
+
+
+
+def classify_stdout(outs):
+    key=None
+    val=None
+    if len(outs)==0:
+        return key,val
+    try:
+        val=json.loads( outs )
+        key='stdjson'
+        return key,val
+    except Exception as e:
+        pass
+    key='stdout'
+    val=outs
+    return key,val
+
+
+    
+MSGTYPE='runner'
+
+def doit():
+    name= os.path.basename(sys.argv[0])
+    cmdargs= sys.argv[1:]
+    conf=getcfg()
+    rep=get_reporter(conf,name)
+    # Build the initial report
+    doc_id= uuid.uuid4().hex
+    m= { '_id':      doc_id,
+         'type':     MSGTYPE,
+         'hostname': gethostname(),
+         'starttime':tstamp(),
+         'cmd':      cmdargs,
+         'state':    'started',
+        }
+    rep.send_msg(doc_id,m)
+    print 'Started'
+
+    # prepare stdout and stderr for the command and try run it
+    stdoutf= "/tmp/"+doc_id+".stdout"
+    stderrf= "/tmp/"+doc_id+".stderr"
+    outf=os.open(stdoutf, os.O_WRONLY | os.O_CREAT)
+    errf=os.open(stderrf, os.O_WRONLY | os.O_CREAT)
+    retcode=-100
+    try:
+        p=Popen(cmdargs, 
+                stdin=None,
+                stdout=outf,
+                stderr=errf)
+        print 'Waiting'
+        retcode=p.wait()
+    except OSError as e:
+        print e
+        m['state']='oserror'
+        m['statedesc']='OSError:'+e.strerror
+    except Exception as e:
+        print e
+        m['state']='error'
+        m['statedesc']=str(e)
+    else:
+        m['state']='done'
+    print "Done"
+    m['stoptime']= tstamp()
+    os.close(outf)
+    os.close(errf)
+    m['retcode']= retcode
+
+    output=open(stdoutf,"r").read()
+    key,val = classify_stdout(output)
+    if key:
+       m[key]=val
+    m['stderr']= open(stderrf,"r").read()
+    rep.send_msg(doc_id,m)
+
+    # Remove temporary stdout,stderr files
+    os.unlink(stdoutf)
+    os.unlink(stderrf)
+
+
+reporter_registry=dict()
+rer=dict()
+
+try:
+    from .defaultreporter import defaultreporter
+    reporter_registry['default']= defaultreporter
+except Exception as e:
+    print "Cannot import the default module reporter/defaultreporter.py"
+    print "This is serious. Bailing out"
+    
+
+try:
+    from .couchreporter import couchreporter
+    reporter_registry['couchrun']= couchreporter
+except Exception as e:
+    rer['couchrun']=e
+
+try:
+    from .nsqreporter import nsqreporter
+    reporter_registry['nsqrun']=nsqreporter
+except Exception as e:
+    rer['nsqrun']=e
+
+try:
+    from .amqpreporter import amqpreporter
+    reporter_registry['amqprun']=amqpreporter
+except Exception as e:
+    rer['amqprun']=e
+
+def get_reporter(conf,name):
+    if name in reporter_registry:
+        return reporter_registry[name](conf,name)
+    else:
+        print "Error with reporter",name
+        raise rer[name]
+        
+
