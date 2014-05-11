@@ -4,20 +4,25 @@ from socket import gethostname
 from subprocess import Popen, CalledProcessError
 
 
-CONF=".runner"
+    
+MSGTYPE='runner'
+
 
 def tstamp():
     return datetime.datetime.utcnow().isoformat()
 
 
-def getcfg():
-    files=["/etc/runner.cfg", os.path.expanduser("~/.runner.cfg") ]
-    parser=ConfigParser.ConfigParser()
-    parser.read(files)
-    return parser
-
-
-
+def get_reporter(conf):
+    name= 'default' if not 'reporter' in conf else conf.reporter
+    if name=="default":
+        from .defaultreporter import defaultreporter as reporter
+    elif name=="couchdb":    
+        from .couchreporter import couchreporter as reporter
+    else:
+        print "Reporter name "+name+" unknown"
+        exit(1)
+    return reporter(conf)
+            
 def classify_stdout(outs):
     key=None
     val=None
@@ -34,15 +39,13 @@ def classify_stdout(outs):
     return key,val
 
 
-    
-MSGTYPE='runner'
 
-def doit():
-    name= os.path.basename(sys.argv[0])
-    cmdargs= sys.argv[1:]
-    conf=getcfg()
-    rep=get_reporter(conf,name)
-    # Build the initial report
+def cmd(args):
+    files=["/etc/runner.cfg", os.path.expanduser("~/.runner.cfg") ]
+    conf=ConfigParser.ConfigParser()
+    conf.read(files)
+    repclass= get_reporter(conf)
+    rep=repclass(parser)
     doc_id= uuid.uuid4().hex
     m= { '_id':      doc_id,
          'type':     MSGTYPE,
@@ -95,40 +98,9 @@ def doit():
     os.unlink(stderrf)
 
 
-reporter_registry=dict()
-rer=dict()
 
-try:
-    from .defaultreporter import defaultreporter
-    reporter_registry['default']= defaultreporter
-except Exception as e:
-    print "Cannot import the default module reporter/defaultreporter.py"
-    print "This is serious. Bailing out"
-    
 
-try:
-    from .couchreporter import couchreporter
-    reporter_registry['couchrun']= couchreporter
-except Exception as e:
-    rer['couchrun']=e
 
-try:
-    from .nsqreporter import nsqreporter
-    reporter_registry['nsqrun']=nsqreporter
-except Exception as e:
-    rer['nsqrun']=e
 
-try:
-    from .amqpreporter import amqpreporter
-    reporter_registry['amqprun']=amqpreporter
-except Exception as e:
-    rer['amqprun']=e
 
-def get_reporter(conf,name):
-    if name in reporter_registry:
-        return reporter_registry[name](conf,name)
-    else:
-        print "Error with reporter",name
-        raise rer[name]
-        
 
