@@ -6,7 +6,7 @@ setup(
     author='Eero Torri',
     author_email='et@torri.be',
     packages=['runner'],
-    scripts=['bin/default','bin/couchrun'],
+    scripts=['bin/rrun'],
     #url='http://pypi.python.org/pypi/TowelStuff/',
     license='LICENSE.txt',
     description='Run commands and get their output reported to couchdb or mq.',

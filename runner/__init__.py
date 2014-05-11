@@ -1,5 +1,5 @@
 
-import sys, datetime, uuid, os, json, ConfigParser
+import sys, datetime, uuid, os, json
 from socket import gethostname
 from subprocess import Popen, CalledProcessError
 
@@ -12,8 +12,10 @@ def tstamp():
     return datetime.datetime.utcnow().isoformat()
 
 
+
+
 def get_reporter(conf):
-    name= 'default' if not 'reporter' in conf else conf.reporter
+    name= conf['reporter']
     if name=="default":
         from .defaultreporter import defaultreporter as reporter
     elif name=="couchdb":    
@@ -39,13 +41,24 @@ def classify_stdout(outs):
     return key,val
 
 
+def getconf(files):
+    conf={}
+    for f in files:
+        try:
+            execfile(f,conf)
+        except Exception as e:
+            print e
+            pass
+    if not ('reporter' in conf):
+        print conf
+        conf['reporter']='default'
+    return conf
 
-def cmd(args):
+
+def cmd(cmdargs):
     files=["/etc/runner.cfg", os.path.expanduser("~/.runner.cfg") ]
-    conf=ConfigParser.ConfigParser()
-    conf.read(files)
-    repclass= get_reporter(conf)
-    rep=repclass(parser)
+    conf=getconf(files)
+    rep= get_reporter(conf)
     doc_id= uuid.uuid4().hex
     m= { '_id':      doc_id,
          'type':     MSGTYPE,
